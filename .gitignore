@@ -1,0 +1,19 @@
+# macOS
+.DS_Store
+
+# Rust
+/target/
+**/*.rs.bk
+
+# Tauri / Node
+node_modules/
+/dist/
+apps/desktop/src-tauri/target/
+
+# Journals and local state
+.shotrename/
+*.journal.json
+
+# Editors
+.idea/
+.vscode/
