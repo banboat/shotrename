@@ -1,6 +1,8 @@
 pub mod detect;
 pub mod external;
+pub mod group;
 pub mod mp4;
+pub mod places;
 pub mod srt;
 
 use anyhow::{Context, Result};
@@ -14,6 +16,7 @@ pub use detect::{
     datetime_from_filename, detect_family, extension, is_excluded_dir, is_supported_video,
     is_temporary, Family, RELATED_EXTENSIONS, TEMP_EXTENSIONS, VIDEO_EXTENSIONS,
 };
+pub use places::Place;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -47,6 +50,7 @@ pub struct MediaProbe {
     pub captured: Option<NaiveDateTime>,
     pub time_source: TimeSource,
     pub gps: Option<(f64, f64)>,
+    pub place: Option<Place>,
     pub altitude: Option<f64>,
     pub width: Option<u32>,
     pub height: Option<u32>,
@@ -64,9 +68,34 @@ pub struct ProbeOptions {
 impl MediaProbe {
     pub fn field_values(&self, template: &Template) -> FieldValues {
         let mut values = std::collections::BTreeMap::new();
+        let place_name = self
+            .place
+            .as_ref()
+            .map(|place| place.name.clone())
+            .unwrap_or_default();
         values.insert("camera".into(), self.camera.clone().unwrap_or_default());
         values.insert("lens".into(), self.lens.clone().unwrap_or_default());
-        values.insert("location".into(), String::new());
+        values.insert("location".into(), place_name.clone());
+        values.insert(
+            "location_zh".into(),
+            self.place
+                .as_ref()
+                .and_then(|place| place.name_zh.clone())
+                .unwrap_or(place_name),
+        );
+        values.insert(
+            "country".into(),
+            self.place
+                .as_ref()
+                .map(|place| place.country.clone())
+                .unwrap_or_default(),
+        );
+        values.insert(
+            "gps".into(),
+            self.gps
+                .map(|(lat, lon)| format!("{lat:.6},{lon:.6}"))
+                .unwrap_or_default(),
+        );
         values.insert("resolution".into(), self.resolution());
         values.insert("fps".into(), self.fps());
         values.insert("duration".into(), self.duration());
@@ -191,6 +220,7 @@ pub fn probe(path: &Path, options: &ProbeOptions) -> Result<MediaProbe> {
         .and_then(|t| t.gps)
         .or_else(|| exif.as_ref().and_then(|e| e.gps))
         .or(mp4.gps);
+    let place = gps.and_then(|(lat, lon)| places::lookup(lat, lon));
     let width = ffprobe
         .as_ref()
         .and_then(|f| f.width)
@@ -218,6 +248,7 @@ pub fn probe(path: &Path, options: &ProbeOptions) -> Result<MediaProbe> {
         captured,
         time_source,
         gps,
+        place,
         altitude: telemetry.as_ref().and_then(|t| t.altitude),
         width,
         height,
@@ -277,12 +308,24 @@ pub fn related_files(path: &Path) -> Vec<PathBuf> {
         let language_srt = ext == "srt"
             && candidate_stem.starts_with(&prefix)
             && candidate_stem.len() > prefix.len();
-        if exact || language_srt {
+        // Insta360 proxies are `LRV_<same stamp>.lrv` next to `VID_<...>.insv`.
+        let proxy = matches!(ext.as_str(), "lrv" | "lrf")
+            && strip_media_prefix(candidate_stem).eq_ignore_ascii_case(strip_media_prefix(stem));
+        if exact || language_srt || proxy {
             related.push(candidate);
         }
     }
     related.sort();
     related
+}
+
+fn strip_media_prefix(value: &str) -> &str {
+    for prefix in ["VID_", "LRV_"] {
+        if value.len() > 4 && value[..4].eq_ignore_ascii_case(prefix) {
+            return &value[4..];
+        }
+    }
+    value
 }
 
 #[cfg(test)]
@@ -334,6 +377,25 @@ mod tests {
     }
 
     #[test]
+    fn finds_insta360_proxy() {
+        let dir = temp_dir("insta-proxy");
+        for name in [
+            "VID_20241121_143015_00_001.insv",
+            "LRV_20241121_143015_00_001.lrv",
+            "LRV_20241121_143015_10_001.lrv",
+        ] {
+            fs::write(dir.join(name), b"x").unwrap();
+        }
+        let related = related_files(&dir.join("VID_20241121_143015_00_001.insv"));
+        let names: Vec<String> = related
+            .iter()
+            .map(|path| path.file_name().unwrap().to_string_lossy().to_string())
+            .collect();
+        assert_eq!(names, vec!["LRV_20241121_143015_00_001.lrv"]);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn finds_srt_case_insensitively() {
         let dir = temp_dir("srt");
         fs::write(dir.join("clip.MP4"), b"x").unwrap();
@@ -353,6 +415,7 @@ mod tests {
             captured: None,
             time_source: TimeSource::FileMtime,
             gps: None,
+            place: None,
             altitude: None,
             width: Some(3840),
             height: Some(2160),

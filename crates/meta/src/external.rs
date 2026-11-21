@@ -114,23 +114,21 @@ pub fn exiftool(path: &Path) -> Option<ExifInfo> {
     )?;
     let value: Value = serde_json::from_str(&stdout).ok()?;
     let object = value.as_array()?.first()?.as_object()?;
-    let mut info = ExifInfo::default();
-    info.model = string_field(object, "Model");
-    info.lens = string_field(object, "LensModel");
-    info.create_date = object
-        .get("CreateDate")
-        .and_then(Value::as_str)
-        .and_then(|value| NaiveDateTime::parse_from_str(value, "%Y:%m:%d %H:%M:%S").ok());
     let lat = number_field(object, "GPSLatitude");
     let lon = number_field(object, "GPSLongitude");
-    if let (Some(lat), Some(lon)) = (lat, lon) {
-        info.gps = Some((lat, lon));
-    }
-    info.duration_secs = number_field(object, "Duration");
-    info.width = number_field(object, "ImageWidth").map(|value| value as u32);
-    info.height = number_field(object, "ImageHeight").map(|value| value as u32);
-    info.fps = number_field(object, "VideoFrameRate");
-    Some(info)
+    Some(ExifInfo {
+        model: string_field(object, "Model"),
+        lens: string_field(object, "LensModel"),
+        create_date: object
+            .get("CreateDate")
+            .and_then(Value::as_str)
+            .and_then(|value| NaiveDateTime::parse_from_str(value, "%Y:%m:%d %H:%M:%S").ok()),
+        gps: lat.zip(lon),
+        duration_secs: number_field(object, "Duration"),
+        width: number_field(object, "ImageWidth").map(|value| value as u32),
+        height: number_field(object, "ImageHeight").map(|value| value as u32),
+        fps: number_field(object, "VideoFrameRate"),
+    })
 }
 
 fn string_field(object: &serde_json::Map<String, Value>, key: &str) -> Option<String> {

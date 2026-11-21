@@ -13,8 +13,10 @@ path = "src/main.rs"
 anyhow.workspace = true
 chrono.workspace = true
 clap.workspace = true
+notify.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 shotrename-core = { path = "../core" }
 shotrename-meta = { path = "../meta" }
+tiny_http.workspace = true
 walkdir.workspace = true

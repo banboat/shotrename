@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ShotRename</title>
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f6f5f2;
+    --panel: #ffffff;
+    --ink: #1c1b18;
+    --muted: #6f6b63;
+    --line: #e4e0d8;
+    --accent: #1f6f4a;
+    --accent-ink: #ffffff;
+    --warn: #9a5b13;
+    --bad: #9b2c2c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  }
+  main { max-width: 1120px; margin: 0 auto; padding: 40px 24px 64px; }
+  header h1 { margin: 0; font-size: 30px; letter-spacing: -0.02em; }
+  header .tag { display: inline-block; margin-left: 10px; padding: 2px 8px; border: 1px solid var(--line); border-radius: 999px; font-size: 12px; color: var(--muted); vertical-align: middle; }
+  header p { margin: 8px 0 0; color: var(--muted); }
+  .panel {
+    margin-top: 24px; padding: 20px; background: var(--panel);
+    border: 1px solid var(--line); border-radius: 14px;
+    box-shadow: 0 1px 2px rgba(28, 27, 24, 0.04);
+  }
+  .grid { display: grid; grid-template-columns: 1fr 220px; gap: 14px 18px; }
+  .grid label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--muted); }
+  .grid input, .grid select {
+    width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 9px;
+    background: #fbfaf7; color: var(--ink); font: inherit;
+  }
+  .grid input:focus, .grid select:focus { outline: 2px solid #bcd9c8; border-color: var(--accent); }
+  .actions { display: flex; align-items: center; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
+  button {
+    padding: 9px 16px; border-radius: 9px; border: 1px solid var(--line);
+    background: #fff; color: var(--ink); font: inherit; font-weight: 500; cursor: pointer;
+  }
+  button:hover:not(:disabled) { border-color: #c9c3b7; }
+  button:disabled { opacity: 0.45; cursor: default; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  button.ghost { background: transparent; }
+  .check { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; font-size: 13px; color: var(--muted); }
+  .status { margin: 14px 0 0; min-height: 22px; color: var(--muted); font-size: 14px; }
+  .status.error { color: var(--bad); }
+  .status.ok { color: var(--accent); }
+  #result { margin-top: 22px; }
+  .stats { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+  .stat { padding: 8px 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; font-size: 13px; }
+  .stat b { font-size: 16px; margin-right: 4px; }
+  .table-wrap { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; overflow: auto; max-height: 62vh; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+  th { position: sticky; top: 0; background: #fbfaf7; font-weight: 600; color: var(--muted); z-index: 1; }
+  tr:last-child td { border-bottom: 0; }
+  td.name { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; word-break: break-all; }
+  .badge { display: inline-block; padding: 2px 7px; border-radius: 999px; font-size: 12px; white-space: nowrap; }
+  .badge.ready { background: #e3f2e9; color: var(--accent); }
+  .badge.unchanged { background: #f0ede6; color: var(--muted); }
+  .badge.blocked { background: #f8e7e7; color: var(--bad); }
+  .meta { color: var(--muted); }
+  footer { margin-top: 28px; color: var(--muted); font-size: 12px; text-align: center; }
+  @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } .check { margin-left: 0; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>ShotRename<span class="tag" id="version">local</span></h1>
+    <p>按拍摄时间与元数据批量重命名。文件只在本机移动，不上传。</p>
+  </header>
+
+  <section class="panel">
+    <div class="grid">
+      <label>素材目录
+        <input id="path" placeholder="/Volumes/SDCARD/DCIM" spellcheck="false" autofocus>
+      </label>
+      <label>模板
+        <select id="template"></select>
+      </label>
+      <label>输出目录（可选）
+        <input id="output" placeholder="留空则就地整理" spellcheck="false">
+      </label>
+      <label>时区偏移（可选）
+        <input id="tz" placeholder="+08:00" spellcheck="false">
+      </label>
+    </div>
+    <div class="actions">
+      <button id="preview" class="primary">预览计划</button>
+      <button id="apply" disabled>应用</button>
+      <button id="undo" class="ghost">撤销上一批</button>
+      <label class="check"><input type="checkbox" id="force"> 强制重命名</label>
+    </div>
+    <p id="status" class="status">选择一个目录，先预览再应用。</p>
+  </section>
+
+  <section id="result" hidden>
+    <div class="stats" id="stats"></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>状态</th><th>原文件</th><th>新文件</th><th>信息</th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer>本地服务 · 仅监听 127.0.0.1 · 关闭终端即停止</footer>
+</main>
+<script>
+(() => {
+  const token = new URLSearchParams(location.search).get('t') || '';
+  const $ = (id) => document.getElementById(id);
+  const statusEl = $('status');
+  let currentPlan = null;
+  let lastRequest = null;
+  let journal = '.shotrename/journal.jsonl';
+
+  const api = (name) => `/api/${name}?t=${encodeURIComponent(token)}`;
+
+  async function call(name, body) {
+    const response = await fetch(api(name), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body || {}),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || response.statusText);
+    return data;
+  }
+
+  function setStatus(text, kind) {
+    statusEl.textContent = text;
+    statusEl.className = 'status' + (kind ? ' ' + kind : '');
+  }
+
+  function cell(text, className) {
+    const td = document.createElement('td');
+    td.textContent = text;
+    if (className) td.className = className;
+    return td;
+  }
+
+  function render(plan, counts) {
+    const rows = $('rows');
+    rows.replaceChildren();
+    for (const entry of plan.entries) {
+      const tr = document.createElement('tr');
+      const statusCell = document.createElement('td');
+      const badge = document.createElement('span');
+      badge.className = 'badge ' + entry.status;
+      badge.textContent = { ready: '重命名', unchanged: '已符合', blocked: '受阻' }[entry.status] || entry.status;
+      statusCell.append(badge);
+      tr.append(statusCell);
+      tr.append(cell(entry.fields && entry.fields.file ? entry.fields.file : entry.source, 'name'));
+      tr.append(cell(entry.status === 'unchanged' ? '—' : entry.target.split(/[\\/]/).pop(), 'name'));
+      const info = entry.fields || {};
+      const bits = [];
+      if (info.group) bits.push(info.group);
+      if (info.camera) bits.push(info.camera);
+      if (info.captured) bits.push(info.captured);
+      if (info.location) bits.push(info.location);
+      if (info.resolution) bits.push(info.resolution);
+      if (info.size) bits.push(info.size);
+      if (entry.reason) bits.push(entry.reason);
+      tr.append(cell(bits.join(' · '), 'meta'));
+      tr.title = entry.source + '  →  ' + entry.target;
+      rows.append(tr);
+    }
+    const stats = $('stats');
+    stats.replaceChildren();
+    const items = [
+      ['可重命名', counts.ready],
+      ['已符合', counts.unchanged],
+      ['受阻', counts.blocked],
+    ];
+    for (const [label, value] of items) {
+      const span = document.createElement('span');
+      span.className = 'stat';
+      const strong = document.createElement('b');
+      strong.textContent = value;
+      span.append(strong, document.createTextNode(label));
+      stats.append(span);
+    }
+    $('result').hidden = plan.entries.length === 0;
+    $('apply').disabled = counts.ready === 0;
+    setStatus(`共 ${plan.entries.length} 个文件：${counts.ready} 个待重命名，${counts.unchanged} 个已符合，${counts.blocked} 个受阻。`);
+  }
+
+  async function preview() {
+    const path = $('path').value.trim();
+    if (!path) { setStatus('先填写素材目录。', 'error'); return; }
+    lastRequest = {
+      path,
+      template: $('template').value,
+      output: $('output').value.trim() || null,
+      tz: $('tz').value.trim() || null,
+      force: $('force').checked,
+    };
+    setStatus('正在读取元数据…');
+    $('preview').disabled = true;
+    try {
+      const data = await call('plan', lastRequest);
+      currentPlan = data.plan;
+      journal = data.journal || journal;
+      render(data.plan, data.counts);
+    } catch (error) {
+      setStatus(String(error.message || error), 'error');
+      $('apply').disabled = true;
+    } finally {
+      $('preview').disabled = false;
+    }
+  }
+
+  async function apply() {
+    if (!currentPlan) return;
+    const ready = currentPlan.entries.filter((entry) => entry.status === 'ready').length;
+    if (!ready) return;
+    if (!confirm(`将移动 ${ready} 个文件（含关联文件），继续？`)) return;
+    $('apply').disabled = true;
+    setStatus('正在移动文件…');
+    try {
+      const data = await call('apply', { plan: currentPlan, journal });
+      journal = data.journal || journal;
+      await preview();
+      setStatus(`已重命名 ${data.moved} 个文件。操作日志：${journal}`, 'ok');
+    } catch (error) {
+      setStatus(String(error.message || error), 'error');
+      $('apply').disabled = false;
+    }
+  }
+
+  async function undo() {
+    if (!confirm('撤销最近一批重命名？')) return;
+    setStatus('正在撤销…');
+    try {
+      const data = await call('undo', { journal });
+      if (lastRequest) await preview();
+      setStatus(`已撤销批次 ${data.batch_id}，恢复 ${data.restored} 个文件。`, 'ok');
+    } catch (error) {
+      setStatus(String(error.message || error), 'error');
+    }
+  }
+
+  async function boot() {
+    try {
+      const response = await fetch(api('state'));
+      const state = await response.json();
+      if (!response.ok) throw new Error(state.error || response.statusText);
+      $('version').textContent = 'v' + state.version;
+      journal = state.journal;
+      const select = $('template');
+      for (const template of state.templates) {
+        const option = document.createElement('option');
+        option.value = template.key;
+        option.textContent = `${template.key} · ${template.filename}`;
+        select.append(option);
+      }
+      const preferred = select.querySelector('option[value="dji"]');
+      if (preferred) preferred.selected = true;
+    } catch (error) {
+      setStatus('无法连接本地服务：' + String(error.message || error), 'error');
+    }
+  }
+
+  $('preview').addEventListener('click', preview);
+  $('apply').addEventListener('click', apply);
+  $('undo').addEventListener('click', undo);
+  $('path').addEventListener('keydown', (event) => { if (event.key === 'Enter') preview(); });
+  boot();
+})();
+</script>
+</body>
+</html>

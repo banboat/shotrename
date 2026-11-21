@@ -1,5 +1,5 @@
 name = "gopro-default"
-filename = "{date}_{time}_{camera}_{resolution}_{original}"
+filename = "{date}_{time}_{camera}_{resolution}"
 directory = "{date:%Y}/{date:%m}"
 related = "strict"
 

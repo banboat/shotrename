@@ -102,35 +102,56 @@ impl NameAllocator {
     /// Allocate `stem[_NNN].ext` in `dir`, reserving the result.
     pub fn allocate(&mut self, dir: &Path, stem: &str, extension: &str) -> PathBuf {
         let extension = extension.trim_start_matches('.');
-        let file_name = if extension.is_empty() {
-            format!("{stem}")
-        } else {
-            format!("{stem}.{extension}")
-        };
-        if !self.is_taken(dir, &file_name) {
-            self.reserve(dir, &file_name);
-            return dir.join(file_name);
-        }
-        for counter in 1..=999 {
-            let candidate = if extension.is_empty() {
-                format!("{stem}_{counter:03}")
-            } else {
-                format!("{stem}_{counter:03}.{extension}")
-            };
-            if !self.is_taken(dir, &candidate) {
-                self.reserve(dir, &candidate);
-                return dir.join(candidate);
+        for (candidate, is_fallback) in candidates(stem) {
+            let file_name = compose_name(&candidate, "", extension);
+            if is_fallback || !self.is_taken(dir, &file_name) {
+                self.reserve(dir, &file_name);
+                return dir.join(file_name);
             }
         }
-        // Exhausted the numeric space; return a highly unlikely name instead of
-        // silently overwriting. Planning should block this entry before apply.
-        let fallback = if extension.is_empty() {
-            format!("{stem}_overflow")
-        } else {
-            format!("{stem}_overflow.{extension}")
-        };
-        self.reserve(dir, &fallback);
-        dir.join(fallback)
+        unreachable!("candidates always yields a fallback")
+    }
+
+    /// Allocate one shared base for a file group, reserving every member name.
+    ///
+    /// `members` holds `(suffix, extension)` pairs. `owned` lists existing
+    /// paths that belong to the group itself; those may sit on a candidate
+    /// target without counting as a conflict, which keeps partially renamed
+    /// groups stable.
+    pub fn allocate_group(
+        &mut self,
+        dir: &Path,
+        stem: &str,
+        members: &[(String, String)],
+        owned: &[PathBuf],
+    ) -> String {
+        let members: Vec<(String, String)> = members
+            .iter()
+            .map(|(suffix, extension)| {
+                (
+                    suffix.clone(),
+                    extension.trim_start_matches('.').to_string(),
+                )
+            })
+            .collect();
+        for (candidate, is_fallback) in candidates(stem) {
+            let names: Vec<String> = members
+                .iter()
+                .map(|(suffix, extension)| compose_name(&candidate, suffix, extension))
+                .collect();
+            let free = is_fallback
+                || names.iter().all(|name| {
+                    let path = dir.join(name);
+                    !self.is_taken(dir, name) || owned.contains(&path)
+                });
+            if free {
+                for name in &names {
+                    self.reserve(dir, name);
+                }
+                return candidate;
+            }
+        }
+        unreachable!("candidates always yields a fallback")
     }
 
     fn reserve(&mut self, dir: &Path, file_name: &str) {
@@ -138,6 +159,24 @@ impl NameAllocator {
             .entry(dir.to_path_buf())
             .or_default()
             .insert(file_name.to_lowercase());
+    }
+}
+
+/// Candidate base stems in allocation order, ending with a fallback that is
+/// always accepted so planning never silently overwrites.
+fn candidates(stem: &str) -> impl Iterator<Item = (String, bool)> {
+    let stem = stem.to_string();
+    let overflow = format!("{stem}_overflow");
+    std::iter::once((stem.clone(), false))
+        .chain((1..=999).map(move |counter| (format!("{stem}_{counter:03}"), false)))
+        .chain(std::iter::once((overflow, true)))
+}
+
+fn compose_name(base: &str, suffix: &str, extension: &str) -> String {
+    if extension.is_empty() {
+        format!("{base}{suffix}")
+    } else {
+        format!("{base}{suffix}.{extension}")
     }
 }
 
@@ -160,6 +199,30 @@ mod tests {
         let next = allocator.allocate(&temp, "clip", "MP4");
         assert_eq!(next.file_name().unwrap(), "clip_002.MP4");
         let _ = fs::remove_dir_all(&temp);
+    }
+
+    #[test]
+    fn allocates_one_base_for_a_group() {
+        let temp = std::env::temp_dir().join(format!("shotrename-group-{}", std::process::id()));
+        let _ = fs::create_dir_all(&temp);
+        fs::write(temp.join("clip_00.insv"), b"x").unwrap();
+
+        let mut allocator = NameAllocator::new();
+        let members = vec![("_00".to_string(), "insv".to_string())];
+        let owned = vec![temp.join("clip_00.insv")];
+        // The group already owns the conflicting name, so the base is kept.
+        let base = allocator.allocate_group(&temp, "clip", &members, &owned);
+        assert_eq!(base, "clip");
+
+        let members = vec![
+            ("_00".to_string(), "insv".to_string()),
+            ("_10".to_string(), "insv".to_string()),
+        ];
+        let base = allocator.allocate_group(&temp, "clip", &members, &[]);
+        assert_eq!(base, "clip_001");
+        assert!(allocator.is_taken(&temp, "clip_001_00.insv"));
+        assert!(allocator.is_taken(&temp, "clip_001_10.insv"));
+        let _ = fs::remove_dir_all(temp);
     }
 
     #[test]

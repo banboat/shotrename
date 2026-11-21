@@ -39,11 +39,9 @@ pub fn sanitize(input: &str, separator: char, mode: SanitizeMode) -> String {
             }
             continue;
         }
-        if ch.is_whitespace() {
-            if !last_was_separator {
-                out.push(separator);
-                last_was_separator = true;
-            }
+        if ch.is_whitespace() && !last_was_separator {
+            out.push(separator);
+            last_was_separator = true;
         }
         // Anything else is dropped on purpose.
     }
