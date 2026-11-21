@@ -4,7 +4,7 @@
 
 > Your camera names files `DJI_0001.MP4`. ShotRename names them by date, camera, location, and content.
 
-ShotRename is an early-stage project. This repository is the initial placeholder for the CLI and desktop app.
+ShotRename is an early-stage project. This repository is the initial placeholder for the CLI and desktop app. It is part of the [banboat tools](https://github.com/banboat/tools) collection.
 
 ## Why
 
