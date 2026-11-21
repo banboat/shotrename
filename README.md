@@ -96,6 +96,8 @@ shotrename ui
 
 Opens `http://127.0.0.1:<port>/` with a one-time token. Preview the plan, apply, or undo the last batch. The server binds loopback only and never uploads anything.
 
+The footage field accepts a typed path, the `Choose…` button opens the system folder picker, or you can click a detected location. Mounted volumes are listed automatically; a card with a `DCIM` folder is tagged `SD`. Use `Refresh` after inserting a card.
+
 ![ShotRename local web UI](docs/ui.png)
 
 ## Templates
@@ -186,7 +188,7 @@ v0.2 已能跑通命令行的完整链路，并带一个本地网页界面：
 - GoPro 章节组 `GOPR`/`GP01`/`GX01` 共用主名，追加 `_ch01`、`_ch02`；
 - GPS 离线反查城市名，内置 34k 城市表，不需要 API；
 - `shotrename watch` 监控目录，文件大小稳定后自动改名；
-- `shotrename ui` 打开本地网页，预览、应用、撤销；
+- `shotrename ui` 打开本地网页，预览、应用、撤销；素材目录可手输、点「选择…」调系统文件夹选择框，或直接点检测到的磁盘，带 `DCIM` 的 SD 卡会标记出来；
 - 重复规划幂等，已符合模板的文件标记为 `unchanged`；`--force` 可强制重命名。
 
 已支持 `.LRF`、`.LRV`、`.SRT`、`.WAV`、`.THM` 跟随主视频，包含 `DJI_0001.en.srt` 这类语言后缀。

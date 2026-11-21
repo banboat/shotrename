@@ -1,4 +1,5 @@
 use crate::apply::{apply_plan, undo_last};
+use crate::locations;
 use crate::planning::{build_plan, collect_files, load_template, parse_tz};
 use anyhow::{anyhow, Result};
 use clap::Parser;
@@ -83,6 +84,15 @@ fn route(request: &mut Request, token: &str) -> ApiResponse {
         (Method::Get, "/") => Response::from_string(UI_HTML)
             .with_header(header("Content-Type", "text/html; charset=utf-8")),
         (Method::Get, "/api/state") => json_response(200, state()),
+        (Method::Get, "/api/locations") => json_response(
+            200,
+            serde_json::to_value(locations::list()).unwrap_or_default(),
+        ),
+        (Method::Post, "/api/pick-folder") => match locations::pick_folder() {
+            Ok(Some(path)) => json_response(200, json!({ "path": path.display().to_string() })),
+            Ok(None) => json_response(200, json!({ "cancelled": true })),
+            Err(error) => json_response(500, json!({ "error": format!("{error:#}") })),
+        },
         (Method::Post, "/api/plan") => match read_json::<PlanRequest>(request) {
             Ok(body) => match plan_endpoint(body) {
                 Ok(value) => json_response(200, value),

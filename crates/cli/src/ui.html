@@ -40,6 +40,14 @@
     background: #fbfaf7; color: var(--ink); font: inherit;
   }
   .grid input:focus, .grid select:focus { outline: 2px solid #bcd9c8; border-color: var(--accent); }
+  .picker { display: flex; gap: 8px; }
+  .picker input { flex: 1; width: auto; min-width: 0; }
+  .picker button { white-space: nowrap; padding: 0 14px; }
+  .chips { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 14px; }
+  .chips .hint { font-size: 12px; color: var(--muted); margin-right: 2px; }
+  button.chip { padding: 5px 10px; border-radius: 999px; font-size: 12px; font-weight: 400; color: var(--muted); background: #fbfaf7; }
+  button.chip.sd { color: var(--accent); border-color: #bcd9c8; background: #eef7f1; }
+  button.chip:hover:not(:disabled) { color: var(--ink); }
   .actions { display: flex; align-items: center; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
   button {
     padding: 9px 16px; border-radius: 9px; border: 1px solid var(--line);
@@ -82,7 +90,10 @@
   <section class="panel">
     <div class="grid">
       <label>素材目录
-        <input id="path" placeholder="/Volumes/SDCARD/DCIM" spellcheck="false" autofocus>
+        <div class="picker">
+          <input id="path" placeholder="/Volumes/SDCARD/DCIM" spellcheck="false" autofocus>
+          <button type="button" id="browse">选择…</button>
+        </div>
       </label>
       <label>模板
         <select id="template"></select>
@@ -94,6 +105,7 @@
         <input id="tz" placeholder="+08:00" spellcheck="false">
       </label>
     </div>
+    <div class="chips" id="locations"><span class="hint">常用位置</span></div>
     <div class="actions">
       <button id="preview" class="primary">预览计划</button>
       <button id="apply" disabled>应用</button>
@@ -250,6 +262,64 @@
     }
   }
 
+  async function loadLocations() {
+    try {
+      const response = await fetch(api('locations'));
+      const data = await response.json();
+      if (!response.ok) return;
+      const box = $('locations');
+      box.replaceChildren();
+      const hint = document.createElement('span');
+      hint.className = 'hint';
+      hint.textContent = '常用位置';
+      box.append(hint);
+      for (const location of [...data.folders, ...data.volumes]) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'chip' + (location.kind === 'sd' ? ' sd' : '');
+        button.textContent = location.label;
+        button.title = location.path;
+        button.addEventListener('click', () => {
+          $('path').value = location.path;
+          $('path').focus();
+        });
+        box.append(button);
+      }
+      const refresh = document.createElement('button');
+      refresh.type = 'button';
+      refresh.className = 'chip';
+      refresh.textContent = '刷新';
+      refresh.title = '重新检测挂载的磁盘';
+      refresh.addEventListener('click', loadLocations);
+      box.append(refresh);
+    } catch (error) {
+      // Locations are a convenience; manual input still works.
+    }
+  }
+
+  async function browse() {
+    const button = $('browse');
+    const label = button.textContent;
+    button.disabled = true;
+    button.textContent = '选择中…';
+    setStatus('已打开系统的文件夹选择框。');
+    try {
+      const data = await call('pick-folder', {});
+      if (data.path) {
+        $('path').value = data.path;
+        setStatus('已选择：' + data.path);
+        await loadLocations();
+      } else {
+        setStatus('已取消选择。');
+      }
+    } catch (error) {
+      setStatus(String(error.message || error), 'error');
+    } finally {
+      button.disabled = false;
+      button.textContent = label;
+    }
+  }
+
   async function boot() {
     try {
       const response = await fetch(api('state'));
@@ -266,6 +336,7 @@
       }
       const preferred = select.querySelector('option[value="dji"]');
       if (preferred) preferred.selected = true;
+      await loadLocations();
       const params = new URLSearchParams(location.search);
       const initialPath = params.get('path');
       if (initialPath) {
@@ -286,6 +357,7 @@
   $('preview').addEventListener('click', preview);
   $('apply').addEventListener('click', apply);
   $('undo').addEventListener('click', undo);
+  $('browse').addEventListener('click', browse);
   $('path').addEventListener('keydown', (event) => { if (event.key === 'Enter') preview(); });
   boot();
 })();

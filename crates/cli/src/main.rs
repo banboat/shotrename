@@ -1,4 +1,5 @@
 mod apply;
+mod locations;
 mod planning;
 mod ui;
 mod watch;
