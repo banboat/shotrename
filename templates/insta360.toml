@@ -1,0 +1,10 @@
+name = "insta360-default"
+filename = "{date}_{time}_{camera}_{location}_{resolution}"
+directory = "{date:%Y}/{date:%m}"
+related = "strict"
+
+[format]
+date = "%Y-%m-%d"
+time = "%H%M%S"
+separator = "_"
+sanitize = "unicode"

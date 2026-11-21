@@ -1,0 +1,20 @@
+[package]
+name = "shotrename"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "shotrename"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+chrono.workspace = true
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+shotrename-core = { path = "../core" }
+shotrename-meta = { path = "../meta" }
+walkdir.workspace = true

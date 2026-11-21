@@ -2,37 +2,83 @@
 
 **Batch rename videos by what's inside them.** Local-first, open source.
 
-> Your camera names files `DJI_0001.MP4`. ShotRename names them by date, camera, location, and content.
+> Your camera names files `DJI_0001.MP4`. ShotRename names them by date, camera, GPS and resolution.
 
-ShotRename is an early-stage project. This repository is the initial placeholder for the CLI and desktop app. It is part of the [banboat tools](https://github.com/banboat/tools) collection.
-
-## Why
-
-Action cameras, drones, and phones produce opaque filenames. Renaming a shoot by hand is slow and error-prone. Existing tools are often GUI-only, paid, or upload footage to a cloud service.
-
-ShotRename reads what the file already knows: capture time, camera, lens, GPS, duration, resolution, frame rate, and sidecar files. It then proposes a clean, consistent name. Content-aware naming (scene, speech, on-screen text) is optional and runs locally.
+ShotRename reads what the file already knows: capture time, camera, lens, GPS, duration, resolution, frame rate, plus sidecar files. It then proposes a clean, consistent name. Content-aware titles are planned as an optional local model; nothing is uploaded.
 
 ShotRename is an open-source alternative to closed-source video renamers such as RenamerX.
 
-## Planned features
+## Status
 
-- Scan DJI, Insta360, GoPro, and generic camera footage.
-- Group sidecar files (`.LRF`, `.WAV`, `.SRT`, `.LRV`) with their video.
-- Read metadata with FFprobe and ExifTool; parse DJI SRT telemetry.
-- Template engine: fields, order, separator, date format, folder organization.
-- Dry-run preview; never overwrite; append a sequence number on conflict.
-- Apply and undo with a local journal.
-- CLI first; Tauri desktop later.
-- Optional local AI for content titles; no cloud by default.
+v0.1 core CLI works end to end:
 
-## CLI (planned)
+- scan `DJI_*`, `VID_*.insv`, `GX*` and generic footage;
+- read MP4/MOV atoms, DJI SRT telemetry, FFprobe and ExifTool when installed;
+- render TOML templates and preview a plan without touching files;
+- rename videos and sidecars, with conflict suffixes and an undo journal;
+- undo the last batch.
+
+Not done yet: desktop GUI, watch folders, Insta360 dual-lens pairing, offline reverse geocoding, AI titles.
+
+## Install
 
 ```bash
-shotrename scan ./footage
-shotrename plan --template dji-default
-shotrename apply --journal .shotrename/journal.json
-shotrename undo --last
+git clone https://github.com/banboat/shotrename
+cd shotrename
+cargo build --release
+./target/release/shotrename --help
 ```
+
+FFprobe and ExifTool are optional. Basic naming works with native MP4 atom parsing and DJI SRT files.
+
+## Usage
+
+```bash
+# 1. Inspect what ShotRename can read
+shotrename scan ./footage --tz +08:00
+
+# 2. Build a plan (never writes to disk)
+shotrename plan ./footage --template dji --tz +08:00 --out plan.json
+
+# 3. Apply, with a journal for undo
+shotrename apply plan.json --journal .shotrename/journal.jsonl
+
+# 4. Undo the last batch
+shotrename undo --journal .shotrename/journal.jsonl
+```
+
+Example plan:
+
+```text
+footage/DCIM/100MEDIA/DJI_0001.MP4
+  -> footage/2024/11/2024-11-21_143015_DJI_Osmo_Action_5_3840x2160.MP4
+  + footage/DCIM/100MEDIA/DJI_0001.SRT -> footage/2024/11/2024-11-21_143015_DJI_Osmo_Action_5_3840x2160.SRT
+```
+
+`plan` is idempotent: files already named by the template are marked `unchanged` instead of being renamed twice.
+
+## Templates
+
+Templates are TOML, so they can live in Git and be reviewed like code:
+
+```toml
+name = "dji-default"
+filename = "{date}_{time}_{camera}_{location}_{resolution}"
+directory = "{date:%Y}/{date:%m}"
+related = "strict"
+
+[format]
+date = "%Y-%m-%d"
+time = "%H%M%S"
+separator = "_"
+sanitize = "unicode"
+```
+
+Fields: `date`, `time`, `camera`, `lens`, `location`, `resolution`, `fps`, `duration`, `codec`, `original`, `family`, `width`, `height`, `altitude`, `seq`.
+
+`{date:%Y}` uses chrono's strftime syntax. Empty fields collapse together with their separators.
+
+Built-in templates: `dji`, `insta360`, `gopro`. List them with `shotrename templates`.
 
 ## Design principles
 
@@ -40,23 +86,40 @@ shotrename undo --last
 2. Deterministic by default. Metadata first; AI is optional.
 3. Preview before apply. No silent overwrites.
 4. Undo everything. Every apply writes a journal.
-5. Templates as data. TOML/JSON files that can live in Git.
+5. Templates as data. TOML files that can live in Git.
+6. Sidecars travel with their video. `.LRF`, `.LRV`, `.SRT`, `.WAV`, `.THM`, including language-tagged subtitles.
 
 ## Roadmap
 
-- [ ] CLI MVP: scan, plan, apply, undo
-- [ ] DJI and Insta360 metadata parsers
-- [ ] Template library and conflict handling
+- [x] CLI: scan, plan, apply, undo
+- [x] MP4 atoms, DJI SRT, FFprobe/ExifTool adapters
+- [x] Sidecar files and conflict suffixes
+- [ ] Insta360 dual-lens pairing (`.insv` `_00_` + `_10_`)
+- [ ] GoPro chapter groups (`GX01`/`GX02`)
+- [ ] Offline location names from GPS
+- [ ] Watch folders with configurable settle time
 - [ ] Tauri desktop app
-- [ ] Optional local content model
+- [ ] Optional local AI titles
 
-## Status
+## Development
 
-Early development. No installable release yet. Watch the repository or open an issue with a sample filename pattern.
+```bash
+cargo test          # unit tests for naming, sanitising, conflicts, MP4 and SRT parsing
+cargo build
+```
+
+Workspace layout:
+
+```text
+crates/core   templates, rendering, sanitising, conflict allocation, journal
+crates/meta   filename detection, MP4 atoms, DJI SRT, FFprobe, ExifTool
+crates/cli    clap commands
+templates/    built-in TOML templates
+```
 
 ## License
 
-TBD. MIT or Apache-2.0 is the intended direction.
+MIT. See [LICENSE](LICENSE).
 
 ## Not affiliated
 
@@ -68,6 +131,8 @@ ShotRename is an independent open-source project. It is not affiliated with Rena
 
 **按视频内容批量重命名，本地优先，开源。**
 
-大疆、影石、GoPro 和手机拍出来的文件名通常没有意义。ShotRename 读取拍摄时间、机型、镜头、GPS、时长、分辨率、帧率和同名侧车文件，生成一致、可搜索的文件名。内容理解（场景、语音、画面文字）是可选能力，默认在本机运行。
+v0.1 的 CLI 已能跑通：扫描大疆、影石、GoPro 和通用视频，读 MP4 元数据、大疆 SRT 遥测、FFprobe/ExifTool，按 TOML 模板生成计划，预览后应用，支持关联文件和撤销日志。
 
-计划支持：DJI / Insta360 / GoPro / 通用视频；`.LRF`、`.WAV`、`.SRT`、`.LRV` 跟随主视频；预览、冲突追加序号、应用与撤销；CLI 优先，桌面端后续。
+已支持 `.LRF`、`.LRV`、`.SRT`、`.WAV`、`.THM` 跟随主视频，包含 `DJI_0001.en.srt` 这类语言后缀。重复规划会把已符合模板的文件标为 `unchanged`，不会二次改名。
+
+尚未完成：桌面端、监控文件夹、影石双镜头 `.insv` 成组、GPS 离线地名、可选的本地 AI 标题。

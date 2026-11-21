@@ -1,0 +1,10 @@
+name = "gopro-default"
+filename = "{date}_{time}_{camera}_{resolution}_{original}"
+directory = "{date:%Y}/{date:%m}"
+related = "strict"
+
+[format]
+date = "%Y-%m-%d"
+time = "%H%M%S"
+separator = "_"
+sanitize = "unicode"
