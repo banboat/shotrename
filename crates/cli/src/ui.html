@@ -266,6 +266,18 @@
       }
       const preferred = select.querySelector('option[value="dji"]');
       if (preferred) preferred.selected = true;
+      const params = new URLSearchParams(location.search);
+      const initialPath = params.get('path');
+      if (initialPath) {
+        $('path').value = initialPath;
+        const initialTemplate = params.get('template');
+        if (initialTemplate && select.querySelector(`option[value="${initialTemplate}"]`)) {
+          select.value = initialTemplate;
+        }
+        $('output').value = params.get('output') || '';
+        $('tz').value = params.get('tz') || '';
+        await preview();
+      }
     } catch (error) {
       setStatus('无法连接本地服务：' + String(error.message || error), 'error');
     }

@@ -96,6 +96,8 @@ shotrename ui
 
 Opens `http://127.0.0.1:<port>/` with a one-time token. Preview the plan, apply, or undo the last batch. The server binds loopback only and never uploads anything.
 
+![ShotRename local web UI](docs/ui.png)
+
 ## Templates
 
 Templates are TOML, so they can live in Git and be reviewed like code:
